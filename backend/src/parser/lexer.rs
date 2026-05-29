@@ -7,59 +7,49 @@ pub enum OpenClose {
     Close,
 }
 
-/// Token for lexing
+/// Tokens for lexing
 pub enum Token {
-    /// Names (for methods, variables, functions)
-    Identifier(String),
-    /// Keywords (e.g. class, interface, implement, new)
-    Keyword(String),
-    /// Unary ops
-    UnaryOp(String),
-    /// Binary ops
-    BinaryOp(String),
-    /// Assignment ops
-    AssignmentOp(String),
-
-    /// Parenthesis ()
-    Parenthesis(OpenClose),
-    /// Bracket []
-    Bracket(OpenClose),
-    /// Brace {}
-    Brace(OpenClose),
-    /// Less than op '<'
-    ///
-    /// seperate this from binary op to implement generics more easily
+    /// Left brace for starting a block
+    LeftBrace,
+    /// Right brace for ending a block
+    RightBrace,
+    /// LT used in starting a generic
     LessThan,
-    /// More than op '>'
-    ///
-    /// seperate this from binary op to implement generics more easily
-    MoreThan,
-    /// For function calls '.'
-    Dot,
-    /// Colon ':'
-    Colon,
-    /// Method reference '::'
-    DoubleColon,
-    /// Question mark
-    QuestionMark,
-    /// Any whitespace
-    Whitespace,
-    /// All comments, // and /* */
-    Comment,
-    /// Signals that the file has ended
+    /// GT used in ending a generic
+    GreaterThan,
+    /// Primitive data types, consists of
+    /// ```
+    /// byte, short, int, long, float, double, char, boolean
+    /// ```
+    Primitives(String),
+    /// Identifier is class name, variable name.
+    /// This will ignore primitive data types.
+    Identifier(String),
+    /// Keyword is like identifier but, for our case,
+    /// only contains:
+    /// ```
+    /// abstract, class, const, default, enum,
+    /// extends, final, implements, import, interface,
+    /// package, public, private, static, synchronized, transient,
+    /// ```
+    Keyword(String),
+    /// Consider private A a = new A();
+    /// Then Assignment is "= new A()"
+    Assignment,
+    /// Denotes file ended
     EOF,
+    /// Denotes end of statement
+    Semicolon,
 }
 pub struct Lexer {
     file: Vec<char>,
     pub curr_ind: usize,
     pub current_lexeme: Vec<char>,
     pub current_char: char,
+    current_quotation: char,
 }
 
 impl Lexer {
-    /// A lexeme can only have length maximum at 64
-    const MAX_LEXEME_LEN: usize = 64;
-
     /// Create a new Lexer
     fn new(file: String) -> io::Result<Self> {
         Ok(Self {
@@ -67,6 +57,7 @@ impl Lexer {
             curr_ind: 0,
             current_lexeme: vec![],
             current_char: '\0',
+            current_quotation: '\0',
         })
     }
 
@@ -93,158 +84,35 @@ impl Lexer {
     /// Get the next token
     pub fn get_next_token(&mut self) -> Option<Token> {
         loop {
-            if self.curr_ind >= self.file.len() {
-                return Some(Token::EOF);
-            }
-            let next_char: char = self.get_next_char()?;
-            match next_char {
-                // Do not care about whitespace
-                '\t' | '\n' | '\r' | ' ' => continue,
-
-                // Trivial stuffs
-                '[' => return Some(Token::Bracket(OpenClose::Open)),
-                ']' => return Some(Token::Bracket(OpenClose::Close)),
-                '{' => return Some(Token::Brace(OpenClose::Open)),
-                '}' => return Some(Token::Brace(OpenClose::Close)),
-                '(' => return Some(Token::Parenthesis(OpenClose::Open)),
-                ')' => return Some(Token::Parenthesis(OpenClose::Close)),
-                '.' => return Some(Token::Dot),
-                '?' => return Some(Token::QuestionMark),
-
-                // Other tokens
-                '+' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte == '+' {
-                                // consume the next token
-                                self.get_next_char();
-                                return Some(Token::UnaryOp("++".to_string()));
-                            }
-                            if byte == '=' {
-                                self.get_next_char();
-                                return Some(Token::AssignmentOp("+=".to_string()));
-                            }
-                            return Some(Token::BinaryOp("+".to_string()));
+            match self.get_next_char() {
+                None => return Some(Token::EOF),
+                Some(';') => return Some(Token::Semicolon),
+                Some('=') => {
+                    // Since we are not
+                }
+                Some('/') => {
+                    // Here, we are either going to see:
+                    // - /=, which is assignment,
+                    // - //, which is inline comment,
+                    // - /*, which signifies block comment.
+                    // - Anything else is syntax error.
+                    // On the comment cases, we iterate until end of comment,
+                    // then go on the next iteration, essentially skipping the comment block
+                    match self.get_char_at(self.curr_ind) {
+                        Some('*') => {
+                            // Block comment case
                         }
-                        None => return Some(Token::BinaryOp("+".to_string())),
+                        Some('/') => {
+                            // Inline comment case
+                        }
+                        Some('=') => {
+                            // Assignment case
+                        }
+                        _ => return None,
                     }
                 }
-                '-' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte == '-' {
-                                // consume the next token
-                                self.get_next_char();
-                                return Some(Token::UnaryOp("--".to_string()));
-                            }
-                            if byte == '=' {
-                                self.get_next_char();
-                                return Some(Token::AssignmentOp("-=".to_string()));
-                            }
-                            return Some(Token::BinaryOp("-".to_string()));
-                        }
-                        None => return Some(Token::BinaryOp("-".to_string())),
-                    }
-                }
-                '*' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte == '=' {
-                                self.get_next_char();
-                                return Some(Token::AssignmentOp("*=".to_string()));
-                            }
-                            return Some(Token::BinaryOp("*".to_string()));
-                        }
-                        None => return Some(Token::BinaryOp("*".to_string())),
-                    }
-                }
-                '/' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte == '=' {
-                                self.get_next_char();
-                                return Some(Token::AssignmentOp("/=".to_string()));
-                            } else if byte == '/' {
-                                // Inline comment. Ignore the whole line.
-                                self.get_next_char();
-                                loop {
-                                    match self.get_char_at(self.curr_ind) {
-                                        Some(c) => {
-                                            if c == '\n' {
-                                                // so we break out of this loop,
-                                                // then break out of the if,
-                                                // then we break out of the match,
-                                                // thus go to the next big loop's iteration
-                                                self.get_next_char();
-                                                break;
-                                            }
-                                            self.get_next_char();
-                                        }
-                                        None => {
-                                            return Some(Token::EOF);
-                                        }
-                                    }
-                                }
-                            } else if byte == '*' {
-                                // comment block. Read until "*/" then run the next iteration
-                                self.get_next_char();
-                                loop {
-                                    match self.get_next_char() {
-                                        Some('*') => match self.get_char_at(self.curr_ind) {
-                                            Some('/') => {
-                                                self.get_next_char();
-                                                break;
-                                            }
-                                            None => {
-                                                return Some(Token::EOF);
-                                            }
-                                            _ => {}
-                                        },
-                                        None => {
-                                            return Some(Token::EOF);
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                            } else {
-                                return Some(Token::BinaryOp("/".to_string()));
-                            }
-                        }
-                        None => return Some(Token::BinaryOp("/".to_string())),
-                    }
-                }
-                '%' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte == '=' {
-                                self.get_next_char();
-                                return Some(Token::AssignmentOp("%=".to_string()));
-                            }
-                            return Some(Token::BinaryOp("%".to_string()));
-                        }
-                        None => return Some(Token::BinaryOp("%".to_string())),
-                    }
-                }
-                ':' => {
-                    let second_next_char: Option<char> = self.get_char_at(self.curr_ind);
-                    match second_next_char {
-                        Some(byte) => {
-                            if byte as char == ':' {
-                                // consume the next token
-                                self.get_next_char();
-                                return Some(Token::DoubleColon);
-                            }
-                            return Some(Token::Colon);
-                        }
-                        None => return Some(Token::Colon),
-                    }
-                }
-                _ => {}
+                // Unexpected token, return None
+                _ => return None,
             }
         }
     }
