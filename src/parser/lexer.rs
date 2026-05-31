@@ -33,35 +33,33 @@ pub enum Token {
     /// package, public, private, static, synchronized, transient,
     /// ```
     Keyword(String),
-    /// Consider private A a = new A();
-    /// Then Assignment is "= new A()"
+    Semicolon,
+    /// Assignment token includes `=`, `-=`, `+=`, `*=`, `/=`,
+    /// `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`, `>>>=`
     Assignment,
+
     /// Denotes file ended
     EOF,
-    /// Denotes end of statement
-    Semicolon,
 }
 pub struct Lexer {
     file: Vec<char>,
     pub curr_ind: usize,
     pub current_lexeme: Vec<char>,
     pub current_char: char,
-    current_quotation: char,
 }
 
 impl Lexer {
     /// Create a new Lexer
-    fn new(file: String) -> io::Result<Self> {
+    pub fn new(file: String) -> io::Result<Self> {
         Ok(Self {
             file: fs::read_to_string(file)?.chars().collect(),
             curr_ind: 0,
             current_lexeme: vec![],
             current_char: '\0',
-            current_quotation: '\0',
         })
     }
 
-    /// Get the next byte of the file
+    /// Get the next char of the file, then move the file ptr up
     fn get_next_char(&mut self) -> Option<char> {
         match self.get_char_at(self.curr_ind) {
             Some(val) => {
@@ -70,6 +68,11 @@ impl Lexer {
             }
             None => None,
         }
+    }
+
+    // Get the next char of the file
+    fn peek_next_char(&self) -> Option<char> {
+        self.get_char_at(self.curr_ind)
     }
 
     /// Get byte at some index in the file
@@ -107,6 +110,7 @@ impl Lexer {
                         }
                         Some('=') => {
                             // Assignment case
+                            return;
                         }
                         _ => return None,
                     }
@@ -116,4 +120,6 @@ impl Lexer {
             }
         }
     }
+
+    fn pass_inline_comment(&mut self) {}
 }
