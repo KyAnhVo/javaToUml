@@ -8,6 +8,7 @@ pub enum OpenClose {
 }
 
 /// Tokens for lexing
+#[derive(Debug)]
 pub enum Token {
     /// Left brace for starting a block
     LeftBrace,
@@ -37,15 +38,20 @@ pub enum Token {
     /// Assignment token includes `=`, `-=`, `+=`, `*=`, `/=`,
     /// `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=`, `>>>=`
     Assignment,
+    /// Binary ops include operations where there are 2 inputs, such as
+    /// `+`, `-`, `*`, `/`, `==`, etc.
+    BinaryOp(String),
+    /// Unary ops include operations where is 1 input, such as
+    /// `--`, `++`, `!`, etc.
+    UnaryOp(String),
 
     /// Denotes file ended
     EOF,
 }
 pub struct Lexer {
-    file: Vec<char>,
+    pub file: Vec<char>,
     pub curr_ind: usize,
-    pub current_lexeme: Vec<char>,
-    pub current_char: char,
+    pub curr_char: Option<char>,
 }
 
 impl Lexer {
@@ -54,25 +60,37 @@ impl Lexer {
         Ok(Self {
             file: fs::read_to_string(file)?.chars().collect(),
             curr_ind: 0,
-            current_lexeme: vec![],
-            current_char: '\0',
+            curr_char: Some('\0'),
         })
     }
 
     /// Get the next char of the file, then move the file ptr up
     fn get_next_char(&mut self) -> Option<char> {
-        match self.get_char_at(self.curr_ind) {
+        self.curr_char = match self.get_char_at(self.curr_ind) {
             Some(val) => {
                 self.curr_ind += 1;
                 Some(val)
             }
             None => None,
-        }
+        };
+        self.curr_char
     }
 
     // Get the next char of the file
     fn peek_next_char(&self) -> Option<char> {
         self.get_char_at(self.curr_ind)
+    }
+
+    fn peek_next_2(&self) -> (Option<char>, Option<char>) {
+        (self.peek_next_char(), self.get_char_at(self.curr_ind + 1))
+    }
+
+    fn peek_next_3(&self) -> (Option<char>, Option<char>, Option<char>) {
+        (
+            self.peek_next_char(),
+            self.get_char_at(self.curr_ind + 1),
+            self.get_char_at(self.curr_ind + 2),
+        )
     }
 
     /// Get byte at some index in the file
@@ -89,9 +107,21 @@ impl Lexer {
         loop {
             match self.get_next_char() {
                 None => return Some(Token::EOF),
+                // Whitespace stuffs -> skip
+                Some(' ') | Some('\t') | Some('\n') | Some('\r') => continue,
                 Some(';') => return Some(Token::Semicolon),
                 Some('=') => {
-                    // Since we are not
+                    // There are 2 cases:
+                    // - =, assignment.
+                    // - ==, binary op.
+                    // - Anything else is syntax error
+                    match self.peek_next_char() {
+                        Some('=') => {
+                            self.get_next_char();
+                            return Some(Token::BinaryOp("==".to_string()));
+                        }
+                        _ => return Some(Token::Assignment),
+                    }
                 }
                 Some('/') => {
                     // Here, we are either going to see:
@@ -99,20 +129,32 @@ impl Lexer {
                     // - //, which is inline comment,
                     // - /*, which signifies block comment.
                     // - Anything else is syntax error.
-                    // On the comment cases, we iterate until end of comment,
-                    // then go on the next iteration, essentially skipping the comment block
                     match self.get_char_at(self.curr_ind) {
                         Some('*') => {
-                            // Block comment case
+                            self.pass_block_comment();
                         }
                         Some('/') => {
-                            // Inline comment case
+                            self.pass_inline_comment();
                         }
                         Some('=') => {
                             // Assignment case
-                            return;
+                            self.get_next_char();
+                            return Some(Token::Assignment);
                         }
                         _ => return None,
+                    }
+                }
+                Some('a'..='z') | Some('A'..='Z') => {
+                    // This is either Identifier or Keyword, depends.
+                    let s: String = self.get_alphabet_chain()?;
+                    match s.as_str() {
+                        "abstract" | "class" | "const" | "default" | "enum" | "extends"
+                        | "final" | "implements" | "import" | "interface" | "package"
+                        | "public" | "private" | "static" | "synchronized" | "transient"
+                        | "true" | "false" => {
+                            return Some(Token::Keyword(s));
+                        }
+                        _ => return Some(Token::Identifier(s)),
                     }
                 }
                 // Unexpected token, return None
@@ -121,5 +163,87 @@ impl Lexer {
         }
     }
 
-    fn pass_inline_comment(&mut self) {}
+    // iterate until new line
+    fn pass_inline_comment(&mut self) {
+        let mut curr_char = self.get_next_char();
+        while curr_char != None && curr_char != Some('\n') {
+            curr_char = self.get_next_char();
+        }
+    }
+
+    // iterate until see */ or end of file
+    fn pass_block_comment(&mut self) {
+        loop {
+            let c1 = self.get_next_char();
+            if c1 == None {
+                return;
+            }
+            if c1 == Some('*') {
+                let c2 = self.get_next_char();
+                if c2 == Some('/') {
+                    break;
+                }
+                if c2 == None {
+                    break;
+                }
+            }
+        }
+    }
+
+    // iterate to get all a-zA-Z0-9.
+    fn get_alphabet_chain(&mut self) -> Option<String> {
+        let mut s: String = "".to_string();
+        s.push(self.curr_char?);
+        loop {
+            match self.peek_next_char() {
+                Some('a'..='z') | Some('A'..='Z') | Some('0'..='9') => {
+                    s.push(self.get_next_char()?);
+                }
+                _ => return Some(s),
+            }
+        }
+    }
+}
+
+// -----------------------------------
+// -------------- TESTS --------------
+// -----------------------------------
+
+#[test]
+fn test_inline_comment() {
+    let mut lexer: Lexer = Lexer {
+        curr_ind: 0,
+        file: "// Ola!\nHello World!".chars().collect(),
+        curr_char: Some('\0'),
+    };
+    lexer.pass_inline_comment();
+    assert!(lexer.peek_next_char() == Some('H'));
+}
+
+#[test]
+fn test_block_comment() {
+    let mut lexer: Lexer = Lexer {
+        curr_ind: 0,
+        file: "askdjf\nsladfnasdf\t * * * */Hello world\n"
+            .chars()
+            .collect(),
+        curr_char: Some('\0'),
+    };
+    lexer.pass_block_comment();
+    assert!(lexer.peek_next_char() == Some('H'));
+}
+
+#[test]
+fn test_lex_simple_string() {
+    let s: String = "boolean meta = true;".to_string();
+    println!("Test string: {s}");
+    let mut lexer: Lexer = Lexer {
+        curr_ind: 0,
+        file: s.chars().collect(),
+        curr_char: Some('\0'),
+    };
+
+    for _ in 0..5 {
+        println!("{:?}", lexer.get_next_token());
+    }
 }
