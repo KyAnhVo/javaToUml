@@ -2,12 +2,13 @@
 
 ### declare pacakge, import files, then declare types
 ```
-<program> ::= <package_decl> {<import>} {<type_decl>}
+<program> ::= <package_decl> <import> {<type_decl>}
 ```
 
-### package com.file.etc;
+### package, import
 ```
-<package_decl> ::= ( "package" IDENTIFIER { "." IDENTIFIER } ";" ) | epsilon
+<package_decl>  ::= ( "package" IDENTIFIER { "." IDENTIFIER } ";" ) | epsilon
+<import>        ::= { "import" [ "static" ] IDENTIFIER { "." IDENTIFIER } [ ".*" ] ";" }
 ```
 
 ### util stuffs that everything uses
