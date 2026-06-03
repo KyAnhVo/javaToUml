@@ -42,3 +42,12 @@
 
 ```
 
+### Body for interface, annotation
+We don't care, use brace stack to get out of it
+
+### Body for enum
+```
+<enum_body> ::= [ IDENTIFIER { "," IDENTIFIER } ] [ ";" <enum_ext> ]
+<enum_ext>  ::= <method_body>
+```
+
