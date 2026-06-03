@@ -2,12 +2,12 @@
 
 ### declare pacakge, import files, then declare types
 ```
-<program> ::= [<package_decl>] {<import>} {<type_decl>}
+<program> ::= <package_decl> {<import>} {<type_decl>}
 ```
 
 ### package com.file.etc;
 ```
-<package_decl> ::= "package" IDENTIFIER { "." IDENTIFIER } ";"
+<package_decl> ::= ( "package" IDENTIFIER { "." IDENTIFIER } ";" ) | epsilon
 ```
 
 ### util stuffs that everything uses
@@ -36,18 +36,17 @@
 
 ### Body for a class: properties, functions
 ```
-<class_body>      ::= { { <modifier> }( <method_decl> | <property_decl> ) }
-<method_decl>     ::= [ <type_params> ] [ <type> ] IDENTIFIER "(" <arg_list> ")" "{" <method_body> "}"
-<property_decl>   ::= IDENTIFIER IDENTIFIER [ "=" <expr> ] ";"
+<class_body>      ::= { { <modifier> }( <method_decl> | <property_decl> | <type_decl> ) }
+<method_decl>     ::= [ <type_params> ] <type> IDENTIFIER "(" <arg_list> ")" "{" <method_body> "}"
+<property_decl>   ::= <ref_type> IDENTIFIER [ "=" <expr> ] ";"
 
 ```
-
-### Body for interface, annotation
-We don't care, use brace stack to get out of it
 
 ### Body for enum
 ```
 <enum_body> ::= [ IDENTIFIER { "," IDENTIFIER } ] [ ";" <enum_ext> ]
-<enum_ext>  ::= <method_body>
+<enum_ext>  ::= { ( <method_decl> | <property_decl> ) }
 ```
 
+### Note
+`<method_body>`, `<arg_list>`, `<expr>`, `<annotation_body>`, `<interface_body>` are all skipped.
