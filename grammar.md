@@ -7,7 +7,7 @@
 
 ### package, import
 ```
-<package_decl>  ::= ( "package" IDENTIFIER { "." IDENTIFIER } ";" ) | epsilon
+<package_decl>  ::= [ "package" IDENTIFIER { "." IDENTIFIER } ";" ]
 <import>        ::= { "import" [ "static" ] IDENTIFIER { "." IDENTIFIER } [ ".*" ] ";" }
 ```
 

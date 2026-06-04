@@ -12,7 +12,6 @@ pub struct Parser {
     tokens: Vec<Token>,
     ind: usize,
     curr_token: Option<Token>,
-    current_statement: Vec<Token>,
     imported_items: Vec<String>,
     package: String,
 }
@@ -37,7 +36,6 @@ impl Parser {
                     tokens,
                     ind: 0,
                     curr_token: None,
-                    current_statement: vec![],
                     imported_items: vec![],
                     package: String::new(),
                 });
@@ -212,6 +210,28 @@ impl Parser {
 
         Ok(())
     }
+
+    fn type_decl(&mut self) -> Result<(), ParseError> {
+        // loop over modifiers, store them
+        let mut modifiers: Vec<Token> = vec![];
+        loop {
+            match self.peek_next_token() {
+                Some(token) => {
+                    if Self::is_modifier(token.clone()) {
+                        self.get_next_token();
+                        modifiers.push(token.clone());
+                    } else {
+                        break;
+                    }
+                }
+                None => return Err(ParseError::IndexOutOfBounds),
+            }
+        }
+
+        // TODO: Implement each of the type declarations
+
+        Ok(())
+    }
 }
 
 /// util
@@ -267,7 +287,6 @@ mod test {
             tokens,
             ind: 0,
             curr_token: None,
-            current_statement: vec![],
             imported_items: vec![],
             package: String::new(),
         }
