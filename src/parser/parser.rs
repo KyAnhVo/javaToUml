@@ -5,6 +5,7 @@ pub struct Parser {
     tokens: Vec<Token>,
     ind: usize,
     curr_token: Option<Token>,
+    lookahead: Option<Token>,
     imported_items: Vec<String>,
     package: String,
 }
@@ -29,6 +30,7 @@ impl Parser {
                     tokens,
                     ind: 0,
                     curr_token: None,
+                    lookahead: None,
                     imported_items: vec![],
                     package: String::new(),
                 });
@@ -43,23 +45,55 @@ impl Parser {
     }
 
     fn peek_token_at(&self, ind: usize) -> Option<Token> {
-        let real_ind: usize = ind + self.ind;
-        if real_ind >= self.tokens.len() {
-            return None;
+        match self.lookahead.clone() {
+            Some(token) => {
+                if ind == 0 {
+                    Some(token)
+                } else {
+                    let real_ind: usize = ind + self.ind - 1;
+                    if real_ind >= self.tokens.len() {
+                        None
+                    } else {
+                        Some(self.tokens[real_ind].clone())
+                    }
+                }
+            }
+            None => {
+                let real_ind: usize = ind + self.ind;
+                if real_ind >= self.tokens.len() {
+                    return None;
+                }
+                Some(self.tokens[real_ind].clone())
+            }
         }
-        Some(self.tokens[real_ind].clone())
     }
-    fn peek_next_token(&self) -> Option<Token> {
-        if self.ind >= self.tokens.len() {
-            return None;
+    fn peek_next_token(&self) -> Result<Token, ParseError> {
+        if let Some(token) = self.lookahead.clone() {
+            return Ok(token);
         }
-        Some(self.tokens[self.ind].clone())
+
+        self.tokens
+            .get(self.ind)
+            .cloned()
+            .ok_or(ParseError::IndexOutOfBounds)
     }
 
-    fn get_next_token(&mut self) -> Option<Token> {
-        self.curr_token = self.peek_next_token();
+    fn get_next_token(&mut self) -> Result<Token, ParseError> {
+        if let Some(token) = self.lookahead.take() {
+            if let Ok(token) = self.peek_next_token() {
+                self.curr_token = Some(token);
+            } else {
+                self.curr_token = None;
+            }
+            return Ok(token);
+        }
+        if let Ok(token) = self.peek_next_token() {
+            self.curr_token = Some(token);
+        } else {
+            self.curr_token = None;
+        }
         self.ind += 1;
-        self.curr_token.clone()
+        self.curr_token.clone().ok_or(ParseError::IndexOutOfBounds)
     }
 }
 
@@ -74,16 +108,11 @@ impl Parser {
             return Err(e);
         }
         loop {
-            if let Some(token) = self.peek_next_token() {
-                if token == Token::EOF {
-                    break;
-                }
-                if let Err(e) = self.type_decl("".to_string()) {
-                    return Err(e);
-                }
-            } else {
-                return Err(ParseError::IndexOutOfBounds);
+            let token = self.peek_next_token()?;
+            if token == Token::EOF {
+                break;
             }
+            self.type_decl("".to_string())?;
         }
 
         Ok(())
@@ -91,28 +120,26 @@ impl Parser {
 
     /// `<package_decl> ::= [ "package" IDENTIFIER { "." IDENTIFIER } ";" ]`
     fn package(&mut self) -> Result<(), ParseError> {
-        match self.peek_next_token() {
-            Some(Token::Keyword(s)) if s == "package" => {}
-            Some(_) => {
+        match self.peek_next_token()? {
+            Token::Keyword(s) if s == "package" => {}
+            _ => {
                 self.package = "default".to_string();
                 return Ok(());
             }
-            None => return Err(ParseError::IndexOutOfBounds),
         }
 
         self.get_next_token(); // consume "package"
-        match self.get_next_token() {
-            Some(Token::Identifier(name)) => {
+        match self.get_next_token()? {
+            Token::Identifier(name) => {
                 self.package.push_str(name.as_str());
             }
-            Some(Token::EOF) => return Err(ParseError::UnexpectedEOF),
-            Some(tok) => {
+            Token::EOF => return Err(ParseError::UnexpectedEOF),
+            tok => {
                 return Err(ParseError::UnexpectedToken {
                     expected: "IDENTIFIER".to_string(),
                     got: vec![(tok).clone()],
                 });
             }
-            None => return Err(ParseError::IndexOutOfBounds),
         }
 
         loop {
@@ -145,71 +172,68 @@ impl Parser {
     /// `<import> ::= { "import" [ "static" ] IDENTIFIER { "." IDENTIFIER } [ ".*" ] ";" }`
     fn import(&mut self) -> Result<(), ParseError> {
         loop {
-            match self.peek_next_token() {
-                Some(Token::Keyword(s)) if s == "import" => {}
+            match self.peek_next_token()? {
+                Token::Keyword(s) if s == "import" => {}
                 _ => break,
             }
 
             let mut is_static = false;
             let mut import_stuff = String::new();
             self.get_next_token();
-            match self.get_next_token() {
-                Some(Token::Identifier(s)) => {
+            match self.get_next_token()? {
+                Token::Identifier(s) => {
                     import_stuff.push_str(s.as_str());
                 }
-                Some(Token::Keyword(s)) if s == "static" => {
+                Token::Keyword(s) if s == "static" => {
                     is_static = true;
-                    match self.get_next_token() {
-                        Some(Token::Identifier(s)) => {
+                    match self.get_next_token()? {
+                        Token::Identifier(s) => {
                             import_stuff.push_str(s.as_str());
                         }
-                        Some(token) => {
+                        token => {
                             return Err(ParseError::UnexpectedToken {
                                 expected: "IDENTIFIER".to_string(),
                                 got: vec![token],
                             });
                         }
-                        None => return Err(ParseError::IndexOutOfBounds),
                     }
                 }
-                Some(token) => {
+                token => {
                     return Err(ParseError::UnexpectedToken {
                         expected: "[static] IDENTIFIER".to_string(),
                         got: vec![token],
                     });
                 }
-                None => return Err(ParseError::IndexOutOfBounds),
             }
             loop {
-                match (self.get_next_token(), self.peek_next_token()) {
-                    (Some(Token::Dot), Some(Token::Identifier(s))) => {
+                match (self.get_next_token()?, self.peek_next_token()) {
+                    (Token::Dot, Ok(Token::Identifier(s))) => {
                         import_stuff.push_str(format!(".{}", s).as_str());
                         self.get_next_token();
                     }
-                    (Some(Token::Dot), Some(Token::Op(s))) if s == "*" => {
+                    (Token::Dot, Ok(Token::Op(s))) if s == "*" => {
                         import_stuff.push_str(".*");
                         self.get_next_token();
-                        match self.get_next_token() {
-                            Some(Token::Semicolon) => {
+                        match self.get_next_token()? {
+                            Token::Semicolon => {
                                 break;
                             }
-                            Some(token) => {
+                            token => {
                                 return Err(ParseError::UnexpectedToken {
                                     expected: "SEMICOLON".to_string(),
                                     got: vec![token],
                                 });
                             }
-                            None => return Err(ParseError::IndexOutOfBounds),
                         }
                     }
-                    (Some(Token::Semicolon), _) => break,
-                    (None, _) | (_, None) => return Err(ParseError::IndexOutOfBounds),
-                    (Some(token1), Some(token2)) => {
+                    (Token::Semicolon, _) => break,
+                    (token1, Ok(token2)) => {
                         return Err(ParseError::UnexpectedToken {
                             expected: "SEMICOLON | DOT * | DOT IDENTIFIER".to_string(),
                             got: vec![token1, token2],
                         });
                     }
+                    (_, Err(e)) => return Err(e),
                 }
             }
 
@@ -225,8 +249,8 @@ impl Parser {
     fn type_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
         // {<annotation>}
         loop {
-            match self.peek_next_token() {
-                Some(Token::Annotation) => {
+            match self.peek_next_token()? {
+                Token::Annotation => {
                     if let Err(e) = self.annotation() {
                         return Err(e);
                     }
@@ -247,15 +271,14 @@ impl Parser {
         };
 
         // return whatever is returned in this block.
-        let res: Result<(), ParseError> = match (self.get_next_token(), self.peek_next_token()) {
-            (Some(Token::Keyword(s)), _) if s == "class" => self.class_decl(name_prefix),
-            (Some(Token::Keyword(s)), _) if s == "interface" => self.interface_decl(name_prefix),
-            (Some(Token::Annotation), Some(Token::Keyword(s))) if s == "interface" => {
+        let res: Result<(), ParseError> = match (self.get_next_token()?, self.peek_next_token()?) {
+            (Token::Keyword(s), _) if s == "class" => self.class_decl(name_prefix),
+            (Token::Keyword(s), _) if s == "interface" => self.interface_decl(name_prefix),
+            (Token::Annotation, Token::Keyword(s)) if s == "interface" => {
                 self.get_next_token();
                 self.annotation_decl(name_prefix)
             }
-            (None, _) | (_, None) => Err(ParseError::IndexOutOfBounds),
-            (Some(token1), Some(token2)) => Err(ParseError::UnexpectedToken {
+            (token1, token2) => Err(ParseError::UnexpectedToken {
                 expected: "class | interface | @interface".to_string(),
                 got: vec![token1, token2],
             }),
@@ -293,10 +316,9 @@ impl Parser {
     /// `<annotation>      ::= "@" IDENTIFIER {"." IDENTIFIER} ["(" <skip_parens> ")"]`
     fn annotation(&mut self) -> Result<(), ParseError> {
         // "@" IDENTIFIER
-        match (self.get_next_token(), self.get_next_token()) {
-            (Some(Token::Annotation), Some(Token::Identifier(_))) => {}
-            (None, _) | (_, None) => return Err(ParseError::IndexOutOfBounds),
-            (Some(token1), Some(token2)) => {
+        match (self.get_next_token()?, self.get_next_token()?) {
+            (Token::Annotation, Token::Identifier(_)) => {}
+            (token1, token2) => {
                 return Err(ParseError::UnexpectedToken {
                     expected: "@ IDENTIFIER".to_string(),
                     got: vec![token1, token2],
@@ -313,18 +335,17 @@ impl Parser {
         }
 
         // ["(" <skip_parens> ")"]
-        if self.peek_next_token() != Some(Token::LeftParen) {
+        if self.peek_next_token()? != Token::LeftParen {
             return Ok(());
         }
         let mut paren_count = 1;
-        self.get_next_token();
+        self.get_next_token()?;
         while paren_count > 0 {
-            match self.get_next_token() {
-                Some(Token::LeftParen) => paren_count += 1,
-                Some(Token::RightParen) => paren_count -= 1,
-                Some(Token::EOF) => return Err(ParseError::UnexpectedEOF),
-                Some(_) => continue,
-                None => return Err(ParseError::IndexOutOfBounds),
+            match self.get_next_token()? {
+                Token::LeftParen => paren_count += 1,
+                Token::RightParen => paren_count -= 1,
+                Token::EOF => return Err(ParseError::UnexpectedEOF),
+                _ => continue,
             }
         }
         Ok(())
@@ -332,10 +353,9 @@ impl Parser {
 
     /// `<type> ::= "void" | <ref_type>`
     fn type_class(&mut self) -> Result<TypeName, ParseError> {
-        match self.get_next_token() {
-            Some(Token::Keyword(s)) if s == "void" => Ok(TypeName::Void),
-            Some(_) => Ok(TypeName::RefType(self.ref_type()?)),
-            None => Err(ParseError::IndexOutOfBounds),
+        match self.get_next_token()? {
+            Token::Keyword(s) if s == "void" => Ok(TypeName::Void),
+            _ => Ok(TypeName::RefType(self.ref_type()?)),
         }
     }
 
@@ -351,13 +371,12 @@ impl Parser {
 
     /// `<modifier> ::= "public" | "private" | "protected" | "abstract" | "static" | "final" | "strictfp"`
     fn modifier(&mut self) -> Result<Token, ParseError> {
-        match self.get_next_token() {
-            Some(token) if Parser::is_modifier(&token) => Ok(token),
-            Some(token) => Err(ParseError::UnexpectedToken {
+        match self.get_next_token()? {
+            token if Parser::is_modifier(&token) => Ok(token),
+            token => Err(ParseError::UnexpectedToken {
                 expected: "MODIFIER".to_string(),
                 got: vec![token],
             }),
-            None => Err(ParseError::IndexOutOfBounds),
         }
     }
 
@@ -366,8 +385,8 @@ impl Parser {
         let mut modifiers: Vec<Token> = vec![];
         let mut access_modifier: AccessModifier = AccessModifier::PackagePrivate;
         loop {
-            match self.peek_next_token() {
-                Some(token) if Parser::is_access_modifier(&token) => {
+            match self.peek_next_token()? {
+                token if Parser::is_access_modifier(&token) => {
                     if access_modifier != AccessModifier::PackagePrivate {
                         return Err(ParseError::MultipleAccessModifiers);
                     }
@@ -379,7 +398,7 @@ impl Parser {
                     };
                     modifiers.push(token.clone());
                 }
-                Some(token) if Parser::is_modifier(&token) => {
+                token if Parser::is_modifier(&token) => {
                     modifiers.push(token.clone());
                 }
                 _ => break,
@@ -395,16 +414,33 @@ impl Parser {
             type_args: vec![],
             array_depth: 0,
         };
-        match self.get_next_token() {
-            Some(Token::Identifier(s)) => ref_type.name.push_str(s.as_str()),
-            Some(other) => {
+
+        // IDENTIFIER
+        match self.get_next_token()? {
+            Token::Identifier(s) => ref_type.name.push_str(s.as_str()),
+            other => {
                 return Err(ParseError::UnexpectedToken {
                     expected: "IDENTIFIER".to_string(),
                     got: vec![other],
                 });
             }
-            None => return Err(ParseError::IndexOutOfBounds),
         };
+
+        // { "." IDENTIFIER }
+        loop {
+            match (self.peek_token_at(0), self.peek_token_at(1)) {
+                (Some(Token::Dot), Some(Token::Identifier(s))) => {
+                    self.get_next_token();
+                    self.get_next_token();
+                    ref_type.name.push_str(format!(".{}", s).as_str());
+                }
+                (None, _) | (_, None) => return Err(ParseError::IndexOutOfBounds),
+                _ => break,
+            }
+        }
+
+        // ["<" <type_arg_list> ">"]
+
         Err(ParseError::IndexOutOfBounds)
     }
 
@@ -472,6 +508,7 @@ mod test {
             tokens,
             ind: 0,
             curr_token: None,
+            lookahead: None,
             imported_items: vec![],
             package: String::new(),
         }
