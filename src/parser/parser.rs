@@ -3,11 +3,41 @@ use crate::parser::{lexer::Lexer, token::Token};
 #[derive(Debug)]
 pub enum ParseError {
     UnexpectedToken { expected: String, got: Vec<Token> },
+    MultipleAccessModifiers,
     UnexpectedEOF,
     LexError,
     IndexOutOfBounds,
     IoError(std::io::Error),
 }
+
+#[derive(Debug)]
+pub enum TypeKind {
+    Class {
+        extends: Option<String>,
+        implements: Vec<String>,
+    },
+    Interface {
+        extends: Vec<String>,
+    },
+    Annotation,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AccessModifier {
+    Public,
+    Private,
+    Protected,
+    PackagePrivate,
+}
+
+#[derive(Debug)]
+pub struct Type {
+    pub name: String,
+    pub kind: TypeKind,
+    pub access_modifier: AccessModifier,
+}
+
+#[derive(Debug)]
 pub struct Parser {
     tokens: Vec<Token>,
     ind: usize,
@@ -66,7 +96,7 @@ impl Parser {
     fn get_next_token(&mut self) -> Option<Token> {
         self.curr_token = self.peek_next_token();
         self.ind += 1;
-        return self.curr_token.clone();
+        self.curr_token.clone()
     }
 }
 
@@ -79,6 +109,19 @@ impl Parser {
         if let Err(e) = self.import() {
             return Err(e);
         }
+        loop {
+            if let Some(token) = self.peek_next_token() {
+                if token == Token::EOF {
+                    break;
+                }
+                if let Err(e) = self.type_decl() {
+                    return Err(e);
+                }
+            } else {
+                return Err(ParseError::IndexOutOfBounds);
+            }
+        }
+
         Ok(())
     }
     fn package(&mut self) -> Result<(), ParseError> {
@@ -100,7 +143,7 @@ impl Parser {
             Some(tok) => {
                 return Err(ParseError::UnexpectedToken {
                     expected: "IDENTIFIER".to_string(),
-                    got: vec![tok],
+                    got: vec![(tok).clone()],
                 });
             }
             None => return Err(ParseError::IndexOutOfBounds),
@@ -124,7 +167,7 @@ impl Parser {
                 (Some(tok1), Some(tok2)) => {
                     return Err(ParseError::UnexpectedToken {
                         expected: "DOT IDENTIFIER or SEMICOLON".to_string(),
-                        got: vec![tok1, tok2],
+                        got: vec![tok1.clone(), tok2.clone()],
                     });
                 }
             }
@@ -213,30 +256,93 @@ impl Parser {
 
     fn type_decl(&mut self) -> Result<(), ParseError> {
         // loop over modifiers, store them
-        let mut modifiers: Vec<Token> = vec![];
-        loop {
-            match self.peek_next_token() {
-                Some(token) => {
-                    if Self::is_modifier(token.clone()) {
-                        self.get_next_token();
-                        modifiers.push(token.clone());
-                    } else {
-                        break;
-                    }
-                }
-                None => return Err(ParseError::IndexOutOfBounds),
-            }
-        }
 
-        // TODO: Implement each of the type declarations
+        let modifiers: Vec<Token>;
+        let access_modifier: AccessModifier;
+
+        match self.modifiers() {
+            Ok((am, m)) => {
+                modifiers = m;
+                access_modifier = am;
+            }
+            Err(e) => return Err(e),
+        };
+
+        // return whatever is returned in this block.
+        let res: Result<(), ParseError> = match (self.get_next_token(), self.peek_next_token()) {
+            (Some(Token::Keyword(s)), _) if s == "class" => self.class_decl(),
+            (Some(Token::Keyword(s)), _) if s == "interface" => self.interface_decl(),
+            (Some(Token::Annotation), Some(Token::Keyword(s))) if s == "interface" => {
+                self.get_next_token();
+                self.annotation_decl()
+            }
+            (None, _) | (_, None) => Err(ParseError::IndexOutOfBounds),
+            (Some(token1), Some(token2)) => Err(ParseError::UnexpectedToken {
+                expected: "class | interface | @interface".to_string(),
+                got: vec![token1, token2],
+            }),
+        };
 
         Ok(())
+    }
+
+    // TODO: Implement class, interface, and annotation handlers.
+
+    fn class_decl(&mut self) -> Result<(), ParseError> {
+        Err(ParseError::IndexOutOfBounds)
+    }
+
+    fn interface_decl(&mut self) -> Result<(), ParseError> {
+        Err(ParseError::IndexOutOfBounds)
+    }
+
+    fn annotation_decl(&mut self) -> Result<(), ParseError> {
+        Err(ParseError::IndexOutOfBounds)
+    }
+
+    // util nonterminals
+
+    fn modifier(&mut self) -> Result<Token, ParseError> {
+        match self.get_next_token() {
+            Some(token) if Parser::is_modifier(&token) => Ok(token),
+            Some(token) => Err(ParseError::UnexpectedToken {
+                expected: "MODIFIER".to_string(),
+                got: vec![token],
+            }),
+            None => Err(ParseError::IndexOutOfBounds),
+        }
+    }
+
+    fn modifiers(&mut self) -> Result<(AccessModifier, Vec<Token>), ParseError> {
+        let mut modifiers: Vec<Token> = vec![];
+        let mut access_modifier: AccessModifier = AccessModifier::PackagePrivate;
+        loop {
+            match self.peek_next_token() {
+                Some(token) if Parser::is_access_modifier(&token) => {
+                    if access_modifier != AccessModifier::PackagePrivate {
+                        return Err(ParseError::MultipleAccessModifiers);
+                    }
+                    access_modifier = match &token {
+                        Token::Keyword(s) if s == "public" => AccessModifier::Public,
+                        Token::Keyword(s) if s == "private" => AccessModifier::Private,
+                        Token::Keyword(s) if s == "protected" => AccessModifier::Protected,
+                        _ => AccessModifier::PackagePrivate, // shouldn't happen, look at is_access_modifier
+                    };
+                    modifiers.push(token.clone());
+                }
+                Some(token) if Parser::is_modifier(&token) => {
+                    modifiers.push(token.clone());
+                }
+                _ => break,
+            };
+        }
+        return Ok((access_modifier, modifiers));
     }
 }
 
 /// util
 impl Parser {
-    fn is_modifier(token: Token) -> bool {
+    fn is_modifier(token: &Token) -> bool {
         match token {
             Token::Keyword(k)
                 if k == "public"
@@ -253,7 +359,7 @@ impl Parser {
         }
     }
 
-    fn is_access_modifier(token: Token) -> bool {
+    fn is_access_modifier(token: &Token) -> bool {
         match token {
             Token::Keyword(k) if k == "public" || k == "private" || k == "protected" => true,
             _ => false,
