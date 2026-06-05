@@ -26,6 +26,11 @@ impl Parser {
                         return Err(ParseError::LexError);
                     }
                 }
+                // Small trick here, so we can spam
+                // self.peek_token_at(0)? ... self.peek_token_at(3)?
+                tokens.push(Token::EOF);
+                tokens.push(Token::EOF);
+                tokens.push(Token::EOF);
                 return Ok(Self {
                     tokens,
                     ind: 0,
@@ -44,26 +49,26 @@ impl Parser {
         self.program()
     }
 
-    fn peek_token_at(&self, ind: usize) -> Option<Token> {
+    fn peek_token_at(&self, ind: usize) -> Result<Token, ParseError> {
         match self.lookahead.clone() {
             Some(token) => {
                 if ind == 0 {
-                    Some(token)
+                    Ok(token)
                 } else {
                     let real_ind: usize = ind + self.ind - 1;
                     if real_ind >= self.tokens.len() {
-                        None
+                        Err(ParseError::IndexOutOfBounds)
                     } else {
-                        Some(self.tokens[real_ind].clone())
+                        Ok(self.tokens[real_ind].clone())
                     }
                 }
             }
             None => {
                 let real_ind: usize = ind + self.ind;
                 if real_ind >= self.tokens.len() {
-                    return None;
+                    return Err(ParseError::IndexOutOfBounds);
                 }
-                Some(self.tokens[real_ind].clone())
+                Ok(self.tokens[real_ind].clone())
             }
         }
     }
@@ -80,11 +85,7 @@ impl Parser {
 
     fn get_next_token(&mut self) -> Result<Token, ParseError> {
         if let Some(token) = self.lookahead.take() {
-            if let Ok(token) = self.peek_next_token() {
-                self.curr_token = Some(token);
-            } else {
-                self.curr_token = None;
-            }
+            self.curr_token = Some(token.clone());
             return Ok(token);
         }
         if let Ok(token) = self.peek_next_token() {
@@ -101,12 +102,8 @@ impl Parser {
 impl Parser {
     /// `<program> ::= <package_decl> <import> {<type_decl>}`
     fn program(&mut self) -> Result<(), ParseError> {
-        if let Err(e) = self.package() {
-            return Err(e);
-        }
-        if let Err(e) = self.import() {
-            return Err(e);
-        }
+        self.package()?;
+        self.import()?;
         loop {
             let token = self.peek_next_token()?;
             if token == Token::EOF {
@@ -128,7 +125,7 @@ impl Parser {
             }
         }
 
-        self.get_next_token(); // consume "package"
+        self.get_next_token()?; // consume "package"
         match self.get_next_token()? {
             Token::Identifier(name) => {
                 self.package.push_str(name.as_str());
@@ -143,21 +140,20 @@ impl Parser {
         }
 
         loop {
-            match (self.peek_token_at(0), self.peek_token_at(1)) {
-                (Some(Token::Dot), Some(Token::Identifier(s))) => {
-                    self.get_next_token();
-                    self.get_next_token();
+            match (self.peek_token_at(0)?, self.peek_token_at(1)?) {
+                (Token::Dot, Token::Identifier(s)) => {
+                    self.get_next_token()?;
+                    self.get_next_token()?;
                     self.package.push_str(format!(".{}", s).as_str());
                 }
-                (Some(Token::Semicolon), _) => {
-                    self.get_next_token();
+                (Token::Semicolon, _) => {
+                    self.get_next_token()?;
                     break;
                 }
-                (Some(Token::EOF), _) => {
+                (Token::EOF, _) => {
                     return Err(ParseError::UnexpectedEOF);
                 }
-                (None, _) | (_, None) => return Err(ParseError::IndexOutOfBounds),
-                (Some(tok1), Some(tok2)) => {
+                (tok1, tok2) => {
                     return Err(ParseError::UnexpectedToken {
                         expected: "DOT IDENTIFIER or SEMICOLON".to_string(),
                         got: vec![tok1.clone(), tok2.clone()],
@@ -172,14 +168,16 @@ impl Parser {
     /// `<import> ::= { "import" [ "static" ] IDENTIFIER { "." IDENTIFIER } [ ".*" ] ";" }`
     fn import(&mut self) -> Result<(), ParseError> {
         loop {
+            // "import"
             match self.peek_next_token()? {
                 Token::Keyword(s) if s == "import" => {}
                 _ => break,
             }
 
+            // ["static"] IDENTIFIER
             let mut is_static = false;
             let mut import_stuff = String::new();
-            self.get_next_token();
+            self.get_next_token()?;
             match self.get_next_token()? {
                 Token::Identifier(s) => {
                     import_stuff.push_str(s.as_str());
@@ -205,15 +203,17 @@ impl Parser {
                     });
                 }
             }
+
+            // {"." IDENTIFIER} [".*"] ";"
             loop {
                 match (self.get_next_token()?, self.peek_next_token()) {
                     (Token::Dot, Ok(Token::Identifier(s))) => {
                         import_stuff.push_str(format!(".{}", s).as_str());
-                        self.get_next_token();
+                        self.get_next_token()?;
                     }
                     (Token::Dot, Ok(Token::Op(s))) if s == "*" => {
                         import_stuff.push_str(".*");
-                        self.get_next_token();
+                        self.get_next_token()?;
                         match self.get_next_token()? {
                             Token::Semicolon => {
                                 break;
@@ -250,32 +250,20 @@ impl Parser {
         // {<annotation>}
         loop {
             match self.peek_next_token()? {
-                Token::Annotation => {
-                    if let Err(e) = self.annotation() {
-                        return Err(e);
-                    }
-                }
+                Token::Annotation => self.annotation()?,
                 _ => break,
             };
         }
 
         // <modifiers>
-        let modifiers: Vec<Token>;
-        let access_modifier: AccessModifier;
-        match self.modifiers() {
-            Ok((am, m)) => {
-                modifiers = m;
-                access_modifier = am;
-            }
-            Err(e) => return Err(e),
-        };
+        let (access_modifier, modifiers) = self.modifiers()?;
 
         // return whatever is returned in this block.
         let res: Result<(), ParseError> = match (self.get_next_token()?, self.peek_next_token()?) {
             (Token::Keyword(s), _) if s == "class" => self.class_decl(name_prefix),
             (Token::Keyword(s), _) if s == "interface" => self.interface_decl(name_prefix),
             (Token::Annotation, Token::Keyword(s)) if s == "interface" => {
-                self.get_next_token();
+                self.get_next_token()?;
                 self.annotation_decl(name_prefix)
             }
             (token1, token2) => Err(ParseError::UnexpectedToken {
@@ -284,11 +272,7 @@ impl Parser {
             }),
         };
 
-        if let Err(e) = res {
-            return Err(e);
-        }
-
-        Ok(())
+        res
     }
 
     // TODO: Implement class, interface, and annotation handlers.
@@ -328,10 +312,12 @@ impl Parser {
 
         // {"." IDENTIFIER}
         loop {
-            match (self.peek_token_at(0), self.peek_token_at(1)) {
-                (Some(Token::Dot), Some(Token::Identifier(_))) => continue,
+            match (self.peek_token_at(0)?, self.peek_token_at(1)?) {
+                (Token::Dot, Token::Identifier(_)) => {}
                 _ => break,
             };
+            self.get_next_token()?;
+            self.get_next_token()?;
         }
 
         // ["(" <skip_parens> ")"]
@@ -403,6 +389,7 @@ impl Parser {
                 }
                 _ => break,
             };
+            self.get_next_token()?;
         }
         return Ok((access_modifier, modifiers));
     }
@@ -428,18 +415,39 @@ impl Parser {
 
         // { "." IDENTIFIER }
         loop {
-            match (self.peek_token_at(0), self.peek_token_at(1)) {
-                (Some(Token::Dot), Some(Token::Identifier(s))) => {
-                    self.get_next_token();
-                    self.get_next_token();
+            match (self.peek_token_at(0)?, self.peek_token_at(1)?) {
+                (Token::Dot, Token::Identifier(s)) => {
+                    self.get_next_token()?;
+                    self.get_next_token()?;
                     ref_type.name.push_str(format!(".{}", s).as_str());
                 }
-                (None, _) | (_, None) => return Err(ParseError::IndexOutOfBounds),
                 _ => break,
             }
         }
 
         // ["<" <type_arg_list> ">"]
+        match self.peek_next_token()? {
+            Token::LessThan => {
+                self.get_next_token()?;
+                self.type_arg_list()?;
+                match self.get_next_token()? {
+                    Token::GreaterThan => {}
+                    Token::Op(s) if s == ">>" => {
+                        self.lookahead = Some(Token::Op(">".to_string()));
+                    }
+                    Token::Op(s) if s == ">>>" => {
+                        self.lookahead = Some(Token::Op(">>".to_string()));
+                    }
+                    token => {
+                        return Err(ParseError::UnexpectedToken {
+                            expected: "> | >> | >>>".to_string(),
+                            got: vec![token],
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
 
         Err(ParseError::IndexOutOfBounds)
     }
