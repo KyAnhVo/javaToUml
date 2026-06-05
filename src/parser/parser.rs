@@ -347,11 +347,15 @@ impl Parser {
 
     /// `<type_params>     ::= "<" <type_param> { "," <type_param> } ">"`
     fn type_params(&mut self) -> Result<Vec<RefType>, ParseError> {
+        // TODO: implement type_params
+
         Err(ParseError::IndexOutOfBounds)
     }
 
     /// `<type_param>      ::= IDENTIFIER [ "extends" <ref_type> { "&" <ref_type> } ]`
     fn type_param(&mut self) -> Result<RefType, ParseError> {
+        // TODO: implement type_param
+
         Err(ParseError::IndexOutOfBounds)
     }
 
@@ -429,7 +433,7 @@ impl Parser {
         match self.peek_next_token()? {
             Token::LessThan => {
                 self.get_next_token()?;
-                self.type_arg_list()?;
+                ref_type.type_args = self.type_arg_list()?;
                 match self.get_next_token()? {
                     Token::GreaterThan => {}
                     Token::Op(s) if s == ">>" => {
@@ -449,17 +453,60 @@ impl Parser {
             _ => {}
         }
 
-        Err(ParseError::IndexOutOfBounds)
+        // { "[]" }
+        loop {
+            match (self.peek_token_at(0)?, self.peek_token_at(1)?) {
+                (Token::LeftBracket, Token::RightBracket) => {
+                    self.get_next_token()?;
+                    self.get_next_token()?;
+                    ref_type.array_depth += 1;
+                }
+                _ => break,
+            }
+        }
+
+        Ok(ref_type)
     }
 
     /// `<type_arg_list> ::= <type_arg> { "," <type_arg> }`
-    fn type_arg_list(&mut self) -> Result<Vec<Token>, ParseError> {
-        Err(ParseError::IndexOutOfBounds)
+    fn type_arg_list(&mut self) -> Result<Vec<RefType>, ParseError> {
+        let mut ref_types: Vec<RefType> = vec![];
+
+        // <type_arg>
+        if let Some(x) = self.type_arg()? {
+            ref_types.push(x);
+        }
+
+        // { "," <type_arg> }
+        if self.peek_next_token()? == Token::Comma {
+            self.get_next_token()?;
+            if let Some(x) = self.type_arg()? {
+                ref_types.push(x);
+            }
+        }
+
+        Ok(ref_types)
     }
 
-    /// `<type_arg>        ::= <ref_type> | "?" [ ( "extends" | "super" ) <ref_type> ]`
-    fn type_arg(&mut self) -> Result<Token, ParseError> {
-        Err(ParseError::IndexOutOfBounds)
+    /// `<type_arg> ::= <ref_type> | "?" [ ( "extends" | "super" ) <ref_type> ]`
+    fn type_arg(&mut self) -> Result<Option<RefType>, ParseError> {
+        match self.peek_next_token()? {
+            Token::QuestionMark => {
+                self.get_next_token()?;
+                match self.peek_next_token()? {
+                    Token::Keyword(s) if s == "extends" || s == "super" => {
+                        self.get_next_token()?;
+                        Ok(Some(self.ref_type()?))
+                    }
+                    _ => Ok(None),
+                }
+            }
+            Token::Identifier(_) => Ok(Some(self.ref_type()?)),
+            token => Err(ParseError::UnexpectedToken {
+                expected: "IDENTIFIER | ?".to_string(),
+                got: vec![token],
+            }),
+        }
     }
 }
 
@@ -547,5 +594,10 @@ mod test {
             parser.imported_items,
             vec!["com.example.Vector", "com.example.*", "com"]
         );
+    }
+
+    #[test]
+    fn test_ref_type() {
+        let mut parser = create_parser_from_valid_string("HashTable<String, Vector<Integer>>");
     }
 }

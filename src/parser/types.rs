@@ -37,6 +37,7 @@ pub struct Type {
     pub access_modifier: AccessModifier,
 }
 
+#[derive(Debug)]
 pub enum TypeName {
     Void,
     RefType(RefType),

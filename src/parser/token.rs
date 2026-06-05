@@ -11,6 +11,7 @@ pub enum Token {
     GreaterThan,
     Dot,
     Annotation,
+    QuestionMark,
     Comma,
     /// Literals are `true`, `false`, numeric, string, char literals.
     Literal(String),

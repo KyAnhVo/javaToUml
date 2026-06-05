@@ -71,6 +71,7 @@ impl Lexer {
                 Some(']') => return Some(Token::RightBracket),
                 Some(',') => return Some(Token::Comma),
                 Some('@') => return Some(Token::Annotation),
+                Some('?') => return Some(Token::QuestionMark),
                 Some('.') => match self.peek_next_2() {
                     (Some('.'), Some('.')) => {
                         self.get_next_char();
@@ -79,9 +80,7 @@ impl Lexer {
                     }
                     _ => return Some(Token::Dot),
                 },
-                Some('~') | Some('?') => {
-                    return Some(Token::Op(self.curr_char.unwrap().to_string()));
-                }
+                Some('~') => return Some(Token::Op("~".to_string())),
                 Some('>') => match self.peek_next_3() {
                     (Some('>'), Some('>'), Some('=')) => {
                         self.get_next_char();
