@@ -275,21 +275,25 @@ impl Parser {
         res
     }
 
-    // TODO: Implement class, interface, and annotation handlers.
-
     /// `<class_decl> ::= "class" IDENTIFIER [ "extends" <ref_type> ]
     /// [ "implements" <ref_type> { "," <ref_type> } ] "{" <class_body> "}"`
     fn class_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+        // TODO: implement class_decl
+
         Err(ParseError::IndexOutOfBounds)
     }
 
     /// `<interface_decl> ::= "interface" IDENTIFIER [ "extends" <ref_type> { "," <ref_type> } ] "{" <interface_body> "}"`
     fn interface_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+        // TODO: implement interface_decl
+
         Err(ParseError::IndexOutOfBounds)
     }
 
     /// `<annotation_decl> ::= "@interface" IDENTIFIER "{" <annotation_body> "}"`
     fn annotation_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+        // TODO: implement annotation_decl
+
         Err(ParseError::IndexOutOfBounds)
     }
 
@@ -437,7 +441,7 @@ impl Parser {
                 match self.get_next_token()? {
                     Token::GreaterThan => {}
                     Token::Op(s) if s == ">>" => {
-                        self.lookahead = Some(Token::Op(">".to_string()));
+                        self.lookahead = Some(Token::GreaterThan);
                     }
                     Token::Op(s) if s == ">>>" => {
                         self.lookahead = Some(Token::Op(">>".to_string()));
@@ -478,7 +482,7 @@ impl Parser {
         }
 
         // { "," <type_arg> }
-        if self.peek_next_token()? == Token::Comma {
+        while self.peek_next_token()? == Token::Comma {
             self.get_next_token()?;
             if let Some(x) = self.type_arg()? {
                 ref_types.push(x);
@@ -543,7 +547,7 @@ impl Parser {
 
 #[cfg(test)]
 mod test {
-    use crate::parser::{lexer::Lexer, parser::Parser, token::Token};
+    use crate::parser::{lexer::Lexer, parser::Parser, token::Token, types::*};
 
     fn create_parser_from_valid_string(s: &str) -> Parser {
         let mut lexer: Lexer = Lexer {
@@ -559,6 +563,10 @@ mod test {
                 break;
             }
         }
+        tokens.push(Token::EOF);
+        tokens.push(Token::EOF);
+        tokens.push(Token::EOF);
+        tokens.push(Token::EOF);
         Parser {
             tokens,
             ind: 0,
@@ -598,6 +606,99 @@ mod test {
 
     #[test]
     fn test_ref_type() {
-        let mut parser = create_parser_from_valid_string("HashTable<String, Vector<Integer>>");
+        println!();
+
+        // simple identifier
+        let mut p = create_parser_from_valid_string("String");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(
+            r,
+            RefType {
+                name: "String".to_string(),
+                type_args: vec![],
+                array_depth: 0
+            }
+        );
+
+        // qualified name
+        let mut p = create_parser_from_valid_string("java.lang.String");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(
+            r,
+            RefType {
+                name: "java.lang.String".to_string(),
+                type_args: vec![],
+                array_depth: 0
+            }
+        );
+
+        // simple generic
+        let mut p = create_parser_from_valid_string("ArrayList<String>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(
+            r,
+            RefType {
+                name: "ArrayList".to_string(),
+                type_args: vec![RefType {
+                    name: "String".to_string(),
+                    type_args: vec![],
+                    array_depth: 0
+                }],
+                array_depth: 0,
+            }
+        );
+
+        // two-arg generic
+        let mut p = create_parser_from_valid_string("Map<String, Integer, Value>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.name, "Map");
+        assert_eq!(r.type_args.len(), 3);
+        assert_eq!(r.type_args[0].name, "String");
+        assert_eq!(r.type_args[1].name, "Integer");
+        assert_eq!(r.type_args[2].name, "Value");
+
+        // wildcard bare — ? contributes nothing
+        let mut p = create_parser_from_valid_string("List<?>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.name, "List");
+        assert_eq!(r.type_args, vec![]);
+
+        // wildcard extends
+        let mut p = create_parser_from_valid_string("List<? extends Number>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.type_args[0].name, "Number");
+
+        // wildcard super
+        let mut p = create_parser_from_valid_string("List<? super Integer>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.type_args[0].name, "Integer");
+
+        // array
+        let mut p = create_parser_from_valid_string("String[]");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.name, "String");
+        assert_eq!(r.array_depth, 1);
+
+        // multi-dimensional array
+        let mut p = create_parser_from_valid_string("String[][]");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.array_depth, 2);
+
+        // nested generic — tests >> lookahead
+        let mut p = create_parser_from_valid_string("Map<String, List<Integer>>");
+        let r = p.ref_type().unwrap();
+        println!("{:#?}", r);
+        assert_eq!(r.name, "Map");
+        assert_eq!(r.type_args[1].name, "List");
+        assert_eq!(r.type_args[1].type_args[0].name, "Integer");
     }
 }

@@ -514,7 +514,6 @@ mod tests {
             assert!(token != None);
             assert!(ind < expected_token.len());
             assert_eq!(token, Some(expected_token[ind].clone()));
-            println!("{:#?}", token.as_ref());
             ind += 1;
         }
     }

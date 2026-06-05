@@ -10,7 +10,7 @@ pub enum ParseError {
     IoError(std::io::Error),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TypeKind {
     Class {
         extends: Option<String>,
@@ -30,20 +30,20 @@ pub enum AccessModifier {
     PackagePrivate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Type {
     pub name: String,
     pub kind: TypeKind,
     pub access_modifier: AccessModifier,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TypeName {
     Void,
     RefType(RefType),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RefType {
     pub name: String,
     pub type_args: Vec<RefType>,
