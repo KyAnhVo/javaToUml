@@ -44,7 +44,8 @@ Not done  == [ ]
 
 ### Body for a class: properties, functions
 ```
-[ ] <class_body>      ::= { <modifiers> ( <method_decl> | <property_decl> | <type_decl> ) }
+[ ] <class_body>      ::= { <member_decl> }
+[ ] <member_decl>     ::= <modifiers> ( <method_decl> | <property_decl> | <type_decl> )
 [ ] <method_decl>     ::= [<type_params>] [<type>] IDENTIFIER "(" <arg_list> ")" ["throws" <ref_type> {"," <ref_type>}]
                       "{" <skip_body> "}"
 [ ] <property_decl>   ::= <ref_type> IDENTIFIER [ "=" <skip_expr> ] ";"

@@ -275,6 +275,10 @@ impl Parser {
         res
     }
 
+    // ----------------------------------------------------------------------------
+    // ----------------- class nonterminals ---------------------------------------
+    // ----------------------------------------------------------------------------
+
     /// `<class_decl> ::= "class" IDENTIFIER [ "extends" <ref_type> ]
     /// [ "implements" <ref_type> { "," <ref_type> } ] "{" <class_body> "}"`
     fn class_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
@@ -283,12 +287,20 @@ impl Parser {
         Err(ParseError::IndexOutOfBounds)
     }
 
+    // ----------------------------------------------------------------------------
+    // ----------------- interface nonterminals -----------------------------------
+    // ----------------------------------------------------------------------------
+
     /// `<interface_decl> ::= "interface" IDENTIFIER [ "extends" <ref_type> { "," <ref_type> } ] "{" <interface_body> "}"`
     fn interface_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
         // TODO: implement interface_decl
 
         Err(ParseError::IndexOutOfBounds)
     }
+
+    // ----------------------------------------------------------------------------
+    // ----------------- annotation nonterminals ----------------------------------
+    // ----------------------------------------------------------------------------
 
     /// `<annotation_decl> ::= "@interface" IDENTIFIER "{" <annotation_body> "}"`
     fn annotation_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
@@ -389,7 +401,7 @@ impl Parser {
         ref_types.push(self.ref_type()?);
 
         // ...{"&" <ref_type>}]
-        while self.peek_next_token()? == Token::QuestionMark {
+        while self.peek_next_token()? == Token::Op('&'.to_string()) {
             self.get_next_token()?;
             ref_types.push(self.ref_type()?);
         }
