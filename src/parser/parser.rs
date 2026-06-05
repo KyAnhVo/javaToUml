@@ -355,8 +355,11 @@ impl Parser {
 
     /// `<type> ::= "void" | <ref_type>`
     fn type_class(&mut self) -> Result<TypeName, ParseError> {
-        match self.get_next_token()? {
-            Token::Keyword(s) if s == "void" => Ok(TypeName::Void),
+        match self.peek_next_token()? {
+            Token::Keyword(s) if s == "void" => {
+                self.get_next_token()?;
+                Ok(TypeName::Void)
+            }
             _ => Ok(TypeName::RefType(self.ref_type()?)),
         }
     }
@@ -366,7 +369,7 @@ impl Parser {
         let mut ref_types: Vec<RefType> = vec![];
 
         // "<" <type_param>...
-        if self.get_next_token()? != Token::GreaterThan {
+        if self.get_next_token()? != Token::LessThan {
             return Err(ParseError::UnexpectedToken {
                 expected: "<".to_string(),
                 got: vec![self.curr_token.clone().unwrap()],

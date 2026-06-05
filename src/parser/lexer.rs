@@ -209,7 +209,7 @@ impl Lexer {
                     }
                     Some('=') => {
                         self.get_next_char();
-                        return Some(Token::Op("|=".to_string()));
+                        return Some(Token::Assignment("|=".to_string()));
                     }
                     _ => return Some(Token::Op("|".to_string())),
                 },
