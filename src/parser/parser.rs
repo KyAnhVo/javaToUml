@@ -351,16 +351,50 @@ impl Parser {
 
     /// `<type_params>     ::= "<" <type_param> { "," <type_param> } ">"`
     fn type_params(&mut self) -> Result<Vec<RefType>, ParseError> {
-        // TODO: implement type_params
+        let mut ref_types: Vec<RefType> = vec![];
 
-        Err(ParseError::IndexOutOfBounds)
+        // "<" <type_param>...
+        if self.get_next_token()? != Token::GreaterThan {
+            return Err(ParseError::UnexpectedToken {
+                expected: "<".to_string(),
+                got: vec![self.curr_token.clone().unwrap()],
+            });
+        }
+        ref_types.append(&mut self.type_param()?);
+
+        Ok(ref_types)
     }
 
     /// `<type_param>      ::= IDENTIFIER [ "extends" <ref_type> { "&" <ref_type> } ]`
-    fn type_param(&mut self) -> Result<RefType, ParseError> {
-        // TODO: implement type_param
+    fn type_param(&mut self) -> Result<Vec<RefType>, ParseError> {
+        let mut ref_types: Vec<RefType> = vec![];
 
-        Err(ParseError::IndexOutOfBounds)
+        // IDENTIFIER
+        match self.get_next_token()? {
+            Token::Identifier(_) => {}
+            token => {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "IDENTIFIER".to_string(),
+                    got: vec![token],
+                });
+            }
+        };
+
+        // ["extends" <ref_type>...
+        if self.peek_next_token()? != Token::Keyword("extends".to_string()) {
+            return Ok(ref_types);
+        }
+
+        self.get_next_token()?;
+        ref_types.push(self.ref_type()?);
+
+        // ...{"&" <ref_type>}]
+        while self.peek_next_token()? == Token::QuestionMark {
+            self.get_next_token()?;
+            ref_types.push(self.ref_type()?);
+        }
+
+        Ok(ref_types)
     }
 
     /// `<modifier> ::= "public" | "private" | "protected" | "abstract" | "static" | "final" | "strictfp"`

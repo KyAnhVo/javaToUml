@@ -49,3 +49,17 @@ pub struct RefType {
     pub type_args: Vec<RefType>,
     pub array_depth: usize,
 }
+
+impl RefType {
+    pub(crate) fn flatten(&self) -> Vec<Self> {
+        let mut v: Vec<Self> = vec![Self {
+            name: self.name.clone(),
+            type_args: vec![],
+            array_depth: self.array_depth,
+        }];
+        for arr in &self.type_args {
+            v.extend(arr.flatten());
+        }
+        v
+    }
+}
