@@ -274,6 +274,7 @@ impl Parser {
             }
         };
         res.access_modifier = access_modifier;
+        res.modifiers = modifiers;
 
         Ok(res)
     }
@@ -504,8 +505,8 @@ impl Parser {
     }
 
     /// `<modifiers> ::= { <modifiers> }`
-    fn modifiers(&mut self) -> Result<(AccessModifier, Vec<Token>), ParseError> {
-        let mut modifiers: Vec<Token> = vec![];
+    fn modifiers(&mut self) -> Result<(AccessModifier, Vec<String>), ParseError> {
+        let mut modifiers: Vec<String> = vec![];
         let mut access_modifier: AccessModifier = AccessModifier::PackagePrivate;
         loop {
             match self.peek_next_token()? {
@@ -519,10 +520,11 @@ impl Parser {
                         Token::Keyword(s) if s == "protected" => AccessModifier::Protected,
                         _ => AccessModifier::PackagePrivate, // shouldn't happen, look at is_access_modifier
                     };
-                    modifiers.push(token.clone());
                 }
                 token if Parser::is_modifier(&token) => {
-                    modifiers.push(token.clone());
+                    if let Token::Keyword(s) = token {
+                        modifiers.push(s)
+                    }
                 }
                 _ => break,
             };
