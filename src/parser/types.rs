@@ -13,13 +13,18 @@ pub enum ParseError {
 #[derive(Debug, PartialEq)]
 pub enum TypeKind {
     Class {
-        extends: Option<String>,
-        implements: Vec<String>,
+        extends: Option<RefType>,
+        implements: Vec<RefType>,
+        composites: Vec<RefType>,
     },
     Interface {
-        extends: Vec<String>,
+        extends: Vec<RefType>,
     },
     Annotation,
+    Enum {
+        implements: Vec<RefType>,
+        composites: Vec<RefType>,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -35,6 +40,7 @@ pub struct Type {
     pub name: String,
     pub kind: TypeKind,
     pub access_modifier: AccessModifier,
+    pub modifiers: Vec<String>,
 }
 
 #[derive(Debug, PartialEq)]

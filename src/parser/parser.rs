@@ -109,7 +109,7 @@ impl Parser {
             if token == Token::EOF {
                 break;
             }
-            self.type_decl("".to_string())?;
+            self.type_decl(&("".to_string()))?;
         }
 
         Ok(())
@@ -246,7 +246,7 @@ impl Parser {
     }
 
     /// `<type_decl> ::= <modifiers> ( <enum_decl> | <class_decl> | <interface_decl> | <annotation_decl> )`
-    fn type_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+    fn type_decl(&mut self, name_prefix: &String) -> Result<Type, ParseError> {
         // {<annotation>}
         loop {
             match self.peek_next_token()? {
@@ -259,20 +259,23 @@ impl Parser {
         let (access_modifier, modifiers) = self.modifiers()?;
 
         // return whatever is returned in this block.
-        let res: Result<(), ParseError> = match (self.get_next_token()?, self.peek_next_token()?) {
-            (Token::Keyword(s), _) if s == "class" => self.class_decl(name_prefix),
-            (Token::Keyword(s), _) if s == "interface" => self.interface_decl(name_prefix),
+        let mut res: Type = match (self.peek_token_at(0)?, self.peek_token_at(1)?) {
+            (Token::Keyword(s), _) if s == "class" => self.class_decl(name_prefix)?,
+            (Token::Keyword(s), _) if s == "interface" => self.interface_decl(name_prefix)?,
+            (Token::Keyword(s), _) if s == "enum" => self.enum_decl(name_prefix)?,
             (Token::Annotation, Token::Keyword(s)) if s == "interface" => {
-                self.get_next_token()?;
-                self.annotation_decl(name_prefix)
+                self.annotation_decl(name_prefix)?
             }
-            (token1, token2) => Err(ParseError::UnexpectedToken {
-                expected: "class | interface | @interface".to_string(),
-                got: vec![token1, token2],
-            }),
+            (token1, token2) => {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "class | interface | @interface".to_string(),
+                    got: vec![token1, token2],
+                });
+            }
         };
+        res.access_modifier = access_modifier;
 
-        res
+        Ok(res)
     }
 
     // ----------------------------------------------------------------------------
@@ -281,10 +284,77 @@ impl Parser {
 
     /// `<class_decl> ::= "class" IDENTIFIER [ "extends" <ref_type> ]
     /// [ "implements" <ref_type> { "," <ref_type> } ] "{" <class_body> "}"`
-    fn class_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+    fn class_decl(&mut self, name_prefix: &String) -> Result<Type, ParseError> {
         // TODO: implement class_decl
 
-        Err(ParseError::IndexOutOfBounds)
+        let mut class: Type = Type {
+            name: "".to_string(),
+            kind: TypeKind::Class {
+                extends: None,
+                implements: vec![],
+                composites: vec![],
+            },
+            modifiers: vec![],
+            access_modifier: AccessModifier::PackagePrivate,
+        };
+
+        // "class" IDENTIFIER
+        match (self.get_next_token()?, self.get_next_token()?) {
+            (Token::Keyword(c), Token::Identifier(s)) if c == "class" => {
+                class.name = name_prefix.clone() + s.as_str();
+            }
+            (token1, token2) => {
+                return Err(ParseError::UnexpectedToken {
+                    expected: "class IDENTIFIER".to_string(),
+                    got: vec![token1, token2],
+                });
+            }
+        }
+
+        // ["extends" <reftype>]
+        if self.peek_next_token()? == Token::Keyword("extends".to_string()) {
+            self.get_next_token()?;
+            if let TypeKind::Class { extends, .. } = &mut class.kind {
+                *extends = Some(self.ref_type()?);
+            }
+        }
+
+        //
+
+        // ["implements" <ref_type> {"," <ref_type>}]
+        if self.peek_next_token()? == Token::Keyword("implements".to_string()) {
+            self.get_next_token()?;
+            if let TypeKind::Class { implements, .. } = &mut class.kind {
+                implements.push(self.ref_type()?);
+            }
+
+            while self.peek_next_token()? == Token::Comma {
+                self.get_next_token()?;
+                if let TypeKind::Class { implements, .. } = &mut class.kind {
+                    implements.push(self.ref_type()?);
+                }
+            }
+        }
+
+        // "{" ClassBody "}"
+        let lbrace = self.get_next_token()?;
+        if lbrace != Token::LeftBrace {
+            return Err(ParseError::UnexpectedToken {
+                expected: "LeftBrace".to_string(),
+                got: vec![lbrace],
+            });
+        }
+        if let TypeKind::Class { composites, .. } = &mut class.kind {
+            *composites = self.class_body(&name_prefix)?;
+        }
+
+        Ok(class)
+    }
+
+    fn class_body(&mut self, name_prefix: &String) -> Result<Vec<RefType>, ParseError> {
+        let mut vector: Vec<RefType> = vec![];
+
+        Ok(vector)
     }
 
     // ----------------------------------------------------------------------------
@@ -292,7 +362,7 @@ impl Parser {
     // ----------------------------------------------------------------------------
 
     /// `<interface_decl> ::= "interface" IDENTIFIER [ "extends" <ref_type> { "," <ref_type> } ] "{" <interface_body> "}"`
-    fn interface_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+    fn interface_decl(&mut self, name_prefix: &String) -> Result<Type, ParseError> {
         // TODO: implement interface_decl
 
         Err(ParseError::IndexOutOfBounds)
@@ -303,8 +373,18 @@ impl Parser {
     // ----------------------------------------------------------------------------
 
     /// `<annotation_decl> ::= "@interface" IDENTIFIER "{" <annotation_body> "}"`
-    fn annotation_decl(&mut self, name_prefix: String) -> Result<(), ParseError> {
+    fn annotation_decl(&mut self, name_prefix: &String) -> Result<Type, ParseError> {
         // TODO: implement annotation_decl
+
+        Err(ParseError::IndexOutOfBounds)
+    }
+
+    // ----------------------------------------------------------------------------
+    // ----------------- enum nonterminals ----------------------------------------
+    // ----------------------------------------------------------------------------
+
+    fn enum_decl(&mut self, name_prefix: &String) -> Result<Type, ParseError> {
+        // TODO: implement enum_decl
 
         Err(ParseError::IndexOutOfBounds)
     }

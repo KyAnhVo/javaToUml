@@ -1,8 +1,8 @@
 # Grammar for Java that we will be using
 
 #### Note:
-Donzo     == [X]
-Not done  == [ ]
+Donzo     == `[X]`
+Not done  == `[ ]`
 
 ### declare pacakge, import files, then declare types
 ```
