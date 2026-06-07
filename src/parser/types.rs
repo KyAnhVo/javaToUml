@@ -27,7 +27,7 @@ pub enum TypeKind {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum AccessModifier {
     Public,
     Private,
@@ -49,7 +49,7 @@ pub enum TypeName {
     RefType(RefType),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct RefType {
     pub name: String,
     pub type_args: Vec<RefType>,
@@ -67,5 +67,35 @@ impl RefType {
             v.extend(arr.flatten());
         }
         v
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum MemberType {
+    Function {
+        output: RefType,
+        input: Vec<RefType>,
+    },
+    Property(RefType),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Member {
+    pub name: String,
+    pub member_type: MemberType,
+    pub modifiers: Vec<String>,
+    pub access_modifier: AccessModifier,
+}
+
+impl Member {
+    pub fn composite_types(vector: &Vec<Self>) -> Vec<RefType> {
+        let mut res: Vec<RefType> = vec![];
+        for member in vector {
+            match &member.member_type {
+                MemberType::Function { .. } => {}
+                MemberType::Property(ref_type) => res.push(ref_type.clone()),
+            }
+        }
+        res
     }
 }

@@ -346,16 +346,27 @@ impl Parser {
             });
         }
         if let TypeKind::Class { composites, .. } = &mut class.kind {
-            *composites = self.class_body(&name_prefix)?;
+            *composites = Member::composite_types(&self.class_body(&name_prefix)?);
         }
 
         Ok(class)
     }
 
-    fn class_body(&mut self, name_prefix: &String) -> Result<Vec<RefType>, ParseError> {
-        let mut vector: Vec<RefType> = vec![];
+    /// class_body = { <member_decl> }
+    ///
+    fn class_body(&mut self, name_prefix: &String) -> Result<Vec<Member>, ParseError> {
+        let mut members: Vec<Member> = vec![];
 
-        Ok(vector)
+        while self.peek_next_token()? != Token::RightBrace {
+            members.push(self.member_decl(name_prefix)?);
+        }
+
+        Ok(members)
+    }
+
+    /// `<member_decl> ::= <modifiers> ( <method_decl> | <property_decl> | <type_decl> )`
+    fn member_decl(&mut self, name_prefix: &String) -> Result<Member, ParseError> {
+        Err(ParseError::IndexOutOfBounds)
     }
 
     // ----------------------------------------------------------------------------
