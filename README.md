@@ -1,6 +1,8 @@
 # JavaToUML
 Your java code doesn't have a UML for it yet? Generate one with JavaToUML!
-Note: project moved to `https://github.com/KyAnhVo/VisualizeJava` due to this one cloning too much
+
+# Note: 
+project moved to `https://github.com/KyAnhVo/VisualizeJava` due to this one cloning too much
 
 ## Description
 This project will capture class relationships and these relationships only:
